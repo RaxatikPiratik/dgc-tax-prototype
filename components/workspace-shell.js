@@ -101,7 +101,7 @@ export default function WorkspaceShell({ children }) {
             })}
           </nav>
 
-          <div className="mt-auto rounded-3xl border border-amber-300/20 bg-amber-400/10 p-4 text-sm text-amber-100">
+          <div className="mt-auto text-sm text-amber-100">
             <button
               type="button"
               onClick={handleSignOut}
