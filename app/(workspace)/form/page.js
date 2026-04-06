@@ -3,416 +3,1005 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
-function getSectionTitle(section, index) {
-  return (
-    section.title_ru ||
-    section.label_ru ||
-    section.name_ru ||
-    section.title ||
-    section.label ||
-    section.name ||
-    `Раздел ${index + 1}`
-  )
-}
+const steps = [
+  { id: 1, label: 'Бизнес' },
+  { id: 2, label: 'Режим' },
+  { id: 3, label: 'Период' },
+  { id: 4, label: 'Данные' },
+  { id: 5, label: 'Результат' },
+]
+
+const months = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+]
+
+const fallbackTaxRegimes = [
+  { id: 'fallback-simplified', name_ru: 'Упрощённый' },
+  { id: 'fallback-general', name_ru: 'Общеустановленный' },
+]
 
 function getFieldLabel(field) {
-  return (
-    field.label_ru ||
-    field.label_kz ||
-    field.label ||
-    field.name ||
-    field.code
-  )
+  return field.label_ru || field.label || field.code || 'Поле'
 }
 
 function getFieldPlaceholder(field) {
-  return field.placeholder_ru || field.placeholder || field.hint_ru || field.hint || ''
+  return (
+    field.placeholder_ru ||
+    field.placeholder ||
+    field.hint_ru ||
+    field.hint ||
+    ''
+  )
 }
 
-function getReadableSupabaseError(error, fallbackMessage) {
-  if (!error) {
-    return fallbackMessage
+function getFieldOptions(field) {
+  if (Array.isArray(field.options)) {
+    return field.options
   }
 
-  const details = [error.message, error.details, error.hint].filter(Boolean).join(' ')
+  if (Array.isArray(field.options_ru)) {
+    return field.options_ru
+  }
 
-  return details || fallbackMessage
+  if (typeof field.options === 'string') {
+    return field.options
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean)
+  }
+
+  if (typeof field.options_ru === 'string') {
+    return field.options_ru
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean)
+  }
+
+  return []
 }
 
-const DEMO_CREATED_BY = 'c444429b-7caf-4eaa-bd9e-a6383970d8ea'
-const DEMO_BUSINESS_ID = 1
+function normalizeBusinessType(value) {
+  if (!value) {
+    return ''
+  }
+
+  const normalized = String(value).trim().toUpperCase()
+
+  if (normalized === 'ИП' || normalized === 'IP') {
+    return 'IP'
+  }
+
+  if (normalized === 'ТОО' || normalized === 'TOO' || normalized === 'LLP') {
+    return 'LLP'
+  }
+
+  return normalized
+}
+
+function normalizePeriodType(value) {
+  if (!value) {
+    return ''
+  }
+
+  const normalized = String(value).trim().toUpperCase()
+
+  if (normalized === 'QUARTER' || normalized === 'YEAR' || normalized === 'MONTH') {
+    return normalized
+  }
+
+  return normalized
+}
+
+function logSupabaseError(label, error, response) {
+  console.error(`${label} raw error object:`, error)
+  console.error(`${label} JSON.stringify(error, null, 2):`, JSON.stringify(error, null, 2))
+  console.error(`${label} error.message:`, error?.message)
+  console.error(`${label} error.details:`, error?.details)
+  console.error(`${label} error.hint:`, error?.hint)
+  console.error(`${label} error.code:`, error?.code)
+  console.error(`${label} error.status:`, error?.status)
+  console.error(`${label} full Supabase response:`, response)
+}
+
+function isTemplateBusinessTypeMatch(templateBusinessType, selectedBusinessType) {
+  if (!templateBusinessType) {
+    return true
+  }
+
+  const normalizedTemplate = normalizeBusinessType(templateBusinessType)
+  const normalizedSelected = normalizeBusinessType(selectedBusinessType)
+
+  return (
+    normalizedTemplate === normalizedSelected ||
+    normalizedTemplate === 'BOTH' ||
+    normalizedTemplate === 'ALL'
+  )
+}
+
+function compareTemplates(a, b, selectedBusinessType) {
+  const aExact = normalizeBusinessType(a.business_type) === normalizeBusinessType(selectedBusinessType)
+  const bExact = normalizeBusinessType(b.business_type) === normalizeBusinessType(selectedBusinessType)
+
+  if (aExact !== bExact) {
+    return aExact ? -1 : 1
+  }
+
+  return 0
+}
+
+function getDefaultFieldValue(field) {
+  if (field.data_type === 'boolean') {
+    return false
+  }
+
+  return ''
+}
+
+function Stepper({ currentStep }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-5">
+      {steps.map(step => {
+        const isActive = currentStep === step.id
+        const isCompleted = currentStep > step.id
+
+        return (
+          <div
+            key={step.id}
+            className={`rounded-2xl border px-4 py-3 transition ${
+              isActive
+                ? 'border-sky-500 bg-sky-50'
+                : isCompleted
+                  ? 'border-emerald-200 bg-emerald-50/70'
+                  : 'border-slate-200 bg-slate-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
+                  isActive
+                    ? 'bg-sky-500 text-white'
+                    : isCompleted
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-white text-slate-500'
+                }`}
+              >
+                {step.id}
+              </span>
+              <span
+                className={`text-sm font-medium ${
+                  isActive || isCompleted ? 'text-slate-900' : 'text-slate-500'
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function FieldShell({ label, children, error, required = false }) {
+  return (
+    <label className="space-y-2.5">
+      <span className="block text-sm font-medium text-slate-800">
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </span>
+      {children}
+      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+    </label>
+  )
+}
+
+function SelectField({ label, value, onChange, options, error, required = false }) {
+  return (
+    <FieldShell label={label} error={error} required={required}>
+      <select
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
+      >
+        <option value="">Выберите</option>
+        {options.map(option => {
+          const normalizedOption =
+            typeof option === 'string'
+              ? { value: option, label: option }
+              : {
+                  value: String(option.value ?? option.id ?? option.code ?? ''),
+                  label: option.label ?? option.name_ru ?? option.name ?? String(option.value ?? ''),
+                }
+
+          return (
+            <option key={normalizedOption.value} value={normalizedOption.value}>
+              {normalizedOption.label}
+            </option>
+          )
+        })}
+      </select>
+    </FieldShell>
+  )
+}
+
+function InputField({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  error,
+  placeholder = '',
+  required = false,
+}) {
+  return (
+    <FieldShell label={label} error={error} required={required}>
+      <input
+        type={type}
+        min={type === 'number' ? '0' : undefined}
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:bg-white"
+      />
+    </FieldShell>
+  )
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <span className="text-sm text-slate-500">{label}</span>
+      <span className="text-sm font-semibold text-slate-900">{value}</span>
+    </div>
+  )
+}
 
 export default function FormPage() {
-  const [sections, setSections] = useState([])
-  const [fields, setFields] = useState([])
-  const [reportTemplate, setReportTemplate] = useState(null)
-  const [values, setValues] = useState({})
-  const [currentStep, setCurrentStep] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const currentDate = new Date()
+  const currentMonthIndex = currentDate.getMonth()
+  const currentYear = currentDate.getFullYear()
+  const years = Array.from({ length: 6 }, (_, i) => String(currentYear - 3 + i))
+
+  const [step, setStep] = useState(1)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
-  const [isSavingDraft, setIsSavingDraft] = useState(false)
+  const [validationErrors, setValidationErrors] = useState({})
+  const [taxRegimes, setTaxRegimes] = useState(fallbackTaxRegimes)
+  const [isLoadingRegimes, setIsLoadingRegimes] = useState(true)
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
+  const [templateFields, setTemplateFields] = useState([])
+  const [templateWarning, setTemplateWarning] = useState('')
+  const [formData, setFormData] = useState({
+    businessType: '',
+    taxRegimeId: '',
+    taxRegimeName: '',
+    year: String(currentYear),
+    month: months[currentMonthIndex],
+    dynamicFieldValues: {},
+    dynamicFieldErrors: {},
+  })
 
   useEffect(() => {
-    async function fetchFormSchema() {
-      setLoading(true)
-      setErrorMessage('')
+    async function loadRegimes() {
+      const selectedBusinessType = normalizeBusinessType(formData.businessType)
+      const loadRegimesQueryInput = {
+        schema: 'public',
+        table: 'tax_regimes',
+        select: 'id, code, name_ru, name_kk, allowed_business_type, is_active',
+        is_active: true,
+        selectedBusinessType,
+      }
 
-      const [sectionsResponse, fieldsResponse, templateResponse] = await Promise.all([
-        supabase.from('report_sections').select('*').order('step_no'),
-        supabase.from('report_fields').select('*').order('sort_order'),
-        supabase
-          .from('report_templates')
-          .select('id,form_code,title_ru')
-          .eq('form_code', '910.00')
-          .limit(1)
-          .maybeSingle(),
-      ])
+      setIsLoadingRegimes(true)
 
-      if (sectionsResponse.error || fieldsResponse.error || templateResponse.error) {
-        console.error(
-          sectionsResponse.error || fieldsResponse.error || templateResponse.error
+      console.log('[loadRegimes] query input:', loadRegimesQueryInput)
+
+      const { data, error } = await supabase
+        .schema('public')
+        .from('tax_regimes')
+        .select('id, code, name_ru, name_kk, allowed_business_type, is_active')
+        .eq('is_active', true)
+
+      console.log('[loadRegimes] selected business type:', selectedBusinessType)
+      console.log('[loadRegimes] Supabase response:', { data, error })
+      console.log('[loadRegimes] returned data:', data)
+
+      if (error) {
+        logSupabaseError('[loadRegimes] tax_regimes error', error, { data, error })
+        setErrorMessage(prev =>
+          prev || 'Не удалось загрузить налоговые режимы. Можно использовать форму с ограниченным набором вариантов.'
         )
-        setErrorMessage('Не удалось загрузить данные формы из Supabase.')
-        setLoading(false)
+        setTaxRegimes(fallbackTaxRegimes)
+        setIsLoadingRegimes(false)
         return
       }
 
-      setSections(sectionsResponse.data || [])
-      setFields(fieldsResponse.data || [])
-      setReportTemplate(templateResponse.data || null)
-      setLoading(false)
+      const filteredData = (data || []).filter(item => {
+        const allowedBusinessType = normalizeBusinessType(item.allowed_business_type)
+
+        if (!selectedBusinessType) {
+          return true
+        }
+
+        return (
+          allowedBusinessType === selectedBusinessType ||
+          allowedBusinessType === 'BOTH'
+        )
+      })
+
+      const regimes = filteredData.map(item => ({
+        ...item,
+        id: String(item.id),
+        name_ru: item.name_ru || `Режим ${item.id}`,
+      }))
+
+      console.log('[loadRegimes] final mapped regimes:', regimes)
+
+      setTaxRegimes(regimes.length > 0 ? regimes : fallbackTaxRegimes)
+      setIsLoadingRegimes(false)
     }
 
-    fetchFormSchema()
-  }, [])
+    loadRegimes()
+  }, [formData.businessType])
 
-  const sectionSteps = useMemo(() => {
-    return sections
-      .map((section, index) => ({
-        ...section,
-        title: getSectionTitle(section, index),
-        fields: fields.filter(field => field.report_section_id === section.id),
-      }))
-      .filter(section => section.fields.length > 0)
-  }, [sections, fields])
+  useEffect(() => {
+    async function loadTemplateAndFields() {
+      if (!formData.businessType || !formData.taxRegimeId || !formData.year || !formData.month) {
+        setSelectedTemplate(null)
+        setTemplateFields([])
+        setTemplateWarning('')
+        setFormData(prev => ({
+          ...prev,
+          dynamicFieldValues: {},
+          dynamicFieldErrors: {},
+        }))
+        return
+      }
 
-  const currentSection = sectionSteps[currentStep]
-  const isFirstStep = currentStep === 0
-  const isLastStep = currentStep === sectionSteps.length - 1
+      setIsLoadingTemplate(true)
+      setTemplateWarning('')
 
-  function handleChange(field, rawValue) {
+      const template = await findMatchingTemplate({
+        businessType: formData.businessType,
+        taxRegimeId: formData.taxRegimeId,
+        periodType: 'QUARTER',
+      })
+
+      if (!template) {
+        setSelectedTemplate(null)
+        setTemplateFields([])
+        setTemplateWarning('Подходящая форма не найдена для выбранных параметров.')
+        setFormData(prev => ({
+          ...prev,
+          dynamicFieldValues: {},
+          dynamicFieldErrors: {},
+        }))
+        setIsLoadingTemplate(false)
+        return
+      }
+
+      setSelectedTemplate(template)
+
+      const fields = await loadTemplateFields(template.id)
+      setTemplateFields(fields)
+
+      if (fields.length === 0) {
+        setTemplateWarning('Для выбранной формы пока не настроены поля.')
+      }
+
+      setFormData(prev => {
+        const nextValues = {}
+
+        fields.forEach(field => {
+          nextValues[field.code] =
+            prev.dynamicFieldValues[field.code] ?? getDefaultFieldValue(field)
+        })
+
+        return {
+          ...prev,
+          dynamicFieldValues: nextValues,
+          dynamicFieldErrors: {},
+        }
+      })
+
+      setIsLoadingTemplate(false)
+    }
+
+    loadTemplateAndFields()
+  }, [formData.businessType, formData.taxRegimeId, formData.year, formData.month])
+
+  const reportingPeriod = useMemo(() => {
+    if (!formData.month || !formData.year) {
+      return 'Не выбран'
+    }
+
+    return `${formData.month} ${formData.year}`
+  }, [formData.month, formData.year])
+
+  const periodCode = useMemo(() => {
+    if (!formData.month || !formData.year) {
+      return ''
+    }
+
+    return `${formData.year}-${String(months.indexOf(formData.month) + 1).padStart(2, '0')}`
+  }, [formData.month, formData.year])
+
+  const numericSummary = useMemo(() => {
+    return templateFields.reduce((total, field) => {
+      if (field.data_type !== 'number') {
+        return total
+      }
+
+      const value = Number(formData.dynamicFieldValues[field.code])
+      return total + (Number.isFinite(value) ? value : 0)
+    }, 0)
+  }, [formData.dynamicFieldValues, templateFields])
+
+  function updateFormData(key, value) {
     setSuccessMessage('')
-
-    const nextValue =
-      field.data_type === 'number'
-        ? rawValue === ''
-          ? ''
-          : Number(rawValue)
-        : rawValue
-
-    setValues(prev => ({
+    setValidationErrors(prev => ({
       ...prev,
-      [field.code]: nextValue,
+      [key]: '',
+    }))
+    setFormData(prev => ({
+      ...prev,
+      [key]: value,
     }))
   }
 
-  function goBack() {
-    setCurrentStep(prev => Math.max(prev - 1, 0))
-  }
-
-  function goNext() {
-    setCurrentStep(prev => Math.min(prev + 1, sectionSteps.length - 1))
-  }
-
-  function buildSubmissionValueRow(submissionId, field, value) {
-    const baseRow = {
-      submission_id: submissionId,
-      report_field_id: field.id,
-    }
-
-    if (field.data_type === 'number') {
-      return {
-        ...baseRow,
-        value_number: value,
-      }
-    }
-
-    if (field.data_type === 'boolean') {
-      return {
-        ...baseRow,
-        value_boolean: value,
-      }
-    }
-
-    return {
-      ...baseRow,
-      value_text: value,
-    }
-  }
-
-  async function handleSaveDraft() {
-    setIsSavingDraft(true)
-    setErrorMessage('')
+  function updateDynamicField(field, value) {
     setSuccessMessage('')
+    setFormData(prev => ({
+      ...prev,
+      dynamicFieldValues: {
+        ...prev.dynamicFieldValues,
+        [field.code]: value,
+      },
+      dynamicFieldErrors: {
+        ...prev.dynamicFieldErrors,
+        [field.code]: '',
+      },
+    }))
+  }
 
-    if (!reportTemplate?.id) {
-      console.error('[handleSaveDraft] Missing required submissions field: report_template_id', {
-        reportTemplate,
-      })
-      setErrorMessage('Не удалось сохранить черновик: не найден обязательный шаблон отчёта.')
-      setIsSavingDraft(false)
-      return
-    }
+  async function findMatchingTemplate({ businessType, taxRegimeId, periodType }) {
+    const normalizedTaxRegimeId = Number(taxRegimeId)
+    const normalizedPeriodType = normalizePeriodType(periodType)
+    const normalizedBusinessType = normalizeBusinessType(businessType)
+    const tax_regime_id = Number.isFinite(normalizedTaxRegimeId)
+      ? normalizedTaxRegimeId
+      : taxRegimeId
+    const period_type = normalizedPeriodType
+    const business_type = normalizedBusinessType
 
-    const today = new Date().toISOString().slice(0, 10)
+    console.log('Matching params:', {
+      tax_regime_id,
+      period_type,
+      business_type,
+    })
 
-    const { data: reportingPeriod, error: reportingPeriodError } = await supabase
-      .from('reporting_periods')
-      .select('id,year,period_type,period_no,start_date,end_date')
-      .lte('start_date', today)
-      .gte('end_date', today)
-      .order('start_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    console.log('[findMatchingTemplate] exact query input:', {
+      table: 'report_templates',
+      tax_regime_id,
+      period_type,
+      business_type,
+      is_active: true,
+    })
 
-    if (reportingPeriodError) {
-      console.error('[handleSaveDraft] reporting period error', reportingPeriodError)
-      setErrorMessage(
-        getReadableSupabaseError(
-          reportingPeriodError,
-          'Не удалось определить отчётный период для сохранения черновика.'
-        )
+    const { data, error } = await supabase
+      .from('report_templates')
+      .select('*')
+      .eq('tax_regime_id', tax_regime_id)
+      .eq('period_type', period_type)
+      .eq('business_type', business_type)
+      .eq('is_active', true)
+
+    console.log('[findMatchingTemplate] exact Supabase response:', { data, error })
+
+    if (error) {
+      logSupabaseError('[findMatchingTemplate] report_templates error', error, { data, error })
+      setErrorMessage(prev =>
+        prev || 'Не удалось загрузить данные формы из Supabase.'
       )
-      setIsSavingDraft(false)
-      return
+      return null
     }
 
-    if (!reportingPeriod?.id) {
-      console.error('[handleSaveDraft] Missing required submissions field: reporting_period_id', {
-        today,
-        reportingPeriod,
-      })
-      setErrorMessage('Не удалось сохранить черновик: не найден действующий отчётный период.')
-      setIsSavingDraft(false)
-      return
+    const exactTemplate = (data || [])[0] || null
+
+    if (exactTemplate) {
+      console.log('[findMatchingTemplate] chosen template:', exactTemplate)
+      return exactTemplate
     }
 
-    const submissionPayload = {
-      created_by: DEMO_CREATED_BY,
-      business_id: DEMO_BUSINESS_ID,
-      status: 'draft',
-      report_template_id: reportTemplate.id,
-      reporting_period_id: reportingPeriod.id,
+    console.log('[findMatchingTemplate] BOTH query input:', {
+      table: 'report_templates',
+      tax_regime_id,
+      period_type,
+      business_type: 'BOTH',
+      is_active: true,
+    })
+
+    const fallbackResponse = await supabase
+      .from('report_templates')
+      .select('*')
+      .eq('tax_regime_id', tax_regime_id)
+      .eq('period_type', period_type)
+      .eq('business_type', 'BOTH')
+      .eq('is_active', true)
+
+    console.log('[findMatchingTemplate] BOTH Supabase response:', {
+      data: fallbackResponse.data,
+      error: fallbackResponse.error,
+    })
+
+    if (fallbackResponse.error) {
+      logSupabaseError(
+        '[findMatchingTemplate] report_templates fallback error',
+        fallbackResponse.error,
+        fallbackResponse
+      )
+      setErrorMessage(prev =>
+        prev || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РґР°РЅРЅС‹Рµ С„РѕСЂРјС‹ РёР· Supabase.'
+      )
+      return null
     }
 
-    console.log('submission payload', submissionPayload)
-    console.log('[handleSaveDraft] submissions insert payload:', submissionPayload)
+    const fallbackTemplate = (fallbackResponse.data || [])[0] || null
 
-    try {
-      const { data: submission, error: submissionError } = await supabase
-        .from('submissions')
-        .insert(submissionPayload)
-        .select('id')
-        .single()
+    if (fallbackTemplate) {
+      console.log('Fallback to BOTH template')
+    }
 
-      if (submissionError) {
-        console.log('submission error', submissionError)
-        console.error('[handleSaveDraft] Supabase submission insert error:', submissionError)
-        setErrorMessage(
-          getReadableSupabaseError(
-            submissionError,
-            'Не удалось сохранить черновик в таблицу submissions.'
-          )
-        )
-        return
-      }
+    console.log('[findMatchingTemplate] chosen template:', fallbackTemplate)
 
-      if (!submission?.id) {
-        console.error('[handleSaveDraft] Submission row was not returned after insert.', {
-          submission,
-        })
-        setErrorMessage('Черновик не сохранён: после создания записи не был получен идентификатор.')
-        return
-      }
+    return fallbackTemplate
+  }
 
-      console.log('created submission', submission)
+  async function loadTemplateFields(templateId) {
+    const { data, error } = await supabase
+      .from('report_fields')
+      .select('*')
+      .eq('report_template_id', templateId)
+      .order('sort_order', { ascending: true })
 
-      const submissionRows = fields
-        .filter(field => Object.hasOwn(values, field.code))
-        .map(field =>
-          buildSubmissionValueRow(submission.id, field, values[field.code])
-        )
+    if (error) {
+      console.error(error)
+      setErrorMessage(prev =>
+        prev || 'Не удалось загрузить данные формы из Supabase.'
+      )
+      return []
+    }
 
-      if (submissionRows.length > 0) {
-        console.log('values payload', submissionRows)
-        console.log('[handleSaveDraft] submission_values insert payload:', submissionRows)
+    return data || []
+  }
 
-        const { error: valuesError } = await supabase
-          .from('submission_values')
-          .insert(submissionRows)
+  function validateDynamicFields() {
+    const nextErrors = {}
 
-        if (valuesError) {
-          console.log('values error', valuesError)
-          console.error('[handleSaveDraft] Supabase submission_values insert error:', valuesError)
-          setErrorMessage(
-            getReadableSupabaseError(
-              valuesError,
-              'Черновик создан, но не удалось сохранить значения полей.'
-            )
-          )
+    templateFields.forEach(field => {
+      const value = formData.dynamicFieldValues[field.code]
+      const stringValue = typeof value === 'string' ? value.trim() : value
+
+      if (field.is_required) {
+        const isEmpty =
+          value === undefined ||
+          value === null ||
+          stringValue === '' ||
+          (field.data_type === 'boolean' && value === false)
+
+        if (isEmpty) {
+          nextErrors[field.code] = 'Заполните обязательное поле.'
           return
         }
       }
 
-      setSuccessMessage('Черновик сохранён')
-    } catch (unexpectedError) {
-      console.error('[handleSaveDraft] Unexpected error:', unexpectedError)
-      setErrorMessage('Произошла непредвиденная ошибка при сохранении черновика.')
-    } finally {
-      setIsSavingDraft(false)
+      if (field.data_type === 'number' && value !== '' && value !== null && value !== undefined) {
+        const numberValue = Number(value)
+
+        if (!Number.isFinite(numberValue)) {
+          nextErrors[field.code] = 'Введите корректное числовое значение.'
+        }
+      }
+    })
+
+    setFormData(prev => ({
+      ...prev,
+      dynamicFieldErrors: nextErrors,
+    }))
+
+    return Object.keys(nextErrors).length === 0
+  }
+
+  function validateStep(currentStep) {
+    const nextErrors = {}
+
+    if (currentStep === 1 && !formData.businessType) {
+      nextErrors.businessType = 'Выберите тип бизнеса.'
     }
+
+    if (currentStep === 2 && !formData.taxRegimeId) {
+      nextErrors.taxRegimeId = 'Выберите налоговый режим.'
+    }
+
+    if (currentStep === 3) {
+      if (!formData.year) {
+        nextErrors.year = 'Выберите год.'
+      }
+
+      if (!formData.month) {
+        nextErrors.month = 'Выберите месяц.'
+      }
+    }
+
+    setValidationErrors(nextErrors)
+
+    if (Object.keys(nextErrors).length > 0) {
+      return false
+    }
+
+    if (currentStep === 4) {
+      return validateDynamicFields()
+    }
+
+    return true
   }
 
-  if (loading) {
-    return (
-      <div className="rounded-[32px] border border-white/70 bg-white/90 px-6 py-12 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-        <p className="text-sm text-slate-600">Загрузка формы...</p>
-      </div>
+  function handleNext() {
+    if (!validateStep(step)) {
+      return
+    }
+
+    setStep(prev => Math.min(prev + 1, steps.length))
+  }
+
+  function handleBack() {
+    setValidationErrors({})
+    setStep(prev => Math.max(prev - 1, 1))
+  }
+
+  function handleFinish() {
+    setSuccessMessage(
+      'Форма подготовлена. Следующим шагом можно подключить сохранение и отправку.'
     )
   }
 
-  if (errorMessage && sectionSteps.length === 0) {
-    return (
-      <div className="rounded-[32px] border border-white/70 bg-white/90 px-6 py-12 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {errorMessage}
+  function renderDynamicField(field) {
+    const label = getFieldLabel(field)
+    const placeholder = getFieldPlaceholder(field)
+    const error = formData.dynamicFieldErrors[field.code]
+    const value = formData.dynamicFieldValues[field.code]
+    const required = Boolean(field.is_required)
+
+    if (field.data_type === 'boolean') {
+      return (
+        <div key={field.id || field.code} className="space-y-2.5">
+          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-700 transition hover:border-slate-300">
+            <input
+              type="checkbox"
+              checked={Boolean(value)}
+              onChange={event => updateDynamicField(field, event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+            />
+            <span>
+              {label}
+              {required ? <span className="ml-1 text-rose-500">*</span> : null}
+            </span>
+          </label>
+          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
         </div>
-      </div>
+      )
+    }
+
+    if (field.data_type === 'select') {
+      return (
+        <SelectField
+          key={field.id || field.code}
+          label={label}
+          value={String(value ?? '')}
+          onChange={nextValue => updateDynamicField(field, nextValue)}
+          options={getFieldOptions(field)}
+          error={error}
+          required={required}
+        />
+      )
+    }
+
+    const type =
+      field.data_type === 'number'
+        ? 'number'
+        : field.data_type === 'date'
+          ? 'date'
+          : 'text'
+
+    return (
+      <InputField
+        key={field.id || field.code}
+        label={label}
+        type={type}
+        value={String(value ?? '')}
+        onChange={nextValue => updateDynamicField(field, nextValue)}
+        error={error}
+        required={required}
+        placeholder={placeholder}
+      />
     )
   }
 
-  if (sectionSteps.length === 0) {
+  function renderStepContent() {
+    if (step === 1) {
+      return (
+        <div className="grid gap-5 md:grid-cols-2">
+          <SelectField
+            label="Тип бизнеса"
+            value={formData.businessType}
+            onChange={value => updateFormData('businessType', value)}
+            options={['ИП', 'ТОО']}
+            error={validationErrors.businessType}
+            required
+          />
+        </div>
+      )
+    }
+
+    if (step === 2) {
+      return (
+        <div className="grid gap-5 md:grid-cols-2">
+          <SelectField
+            label="Режим"
+            value={formData.taxRegimeId}
+            onChange={value => {
+              const selectedRegime = taxRegimes.find(item => String(item.id) === value)
+              setSelectedTemplate(null)
+              setTemplateFields([])
+              setTemplateWarning('')
+              updateFormData('taxRegimeId', value)
+              updateFormData('taxRegimeName', selectedRegime?.name_ru || '')
+            }}
+            options={taxRegimes.map(item => ({
+              value: String(item.id),
+              label: item.name_ru,
+            }))}
+            error={validationErrors.taxRegimeId}
+            required
+          />
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+            {isLoadingRegimes
+              ? 'Загрузка налоговых режимов...'
+              : 'Выберите режим, который подходит для текущего бизнеса.'}
+          </div>
+        </div>
+      )
+    }
+
+    if (step === 3) {
+      return (
+        <div className="space-y-5">
+          <div className="grid gap-5 md:grid-cols-2">
+            <SelectField
+              label="Год"
+              value={formData.year}
+              onChange={value => updateFormData('year', value)}
+              options={years}
+              error={validationErrors.year}
+              required
+            />
+            <SelectField
+              label="Месяц"
+              value={formData.month}
+              onChange={value => updateFormData('month', value)}
+              options={months}
+              error={validationErrors.month}
+              required
+            />
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Выбранный период
+            </p>
+            <p className="mt-1 text-sm font-medium text-slate-800">
+              {reportingPeriod}
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    if (step === 4) {
+      if (isLoadingTemplate) {
+        return (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-10 text-sm text-slate-500">
+            Загрузка структуры формы...
+          </div>
+        )
+      }
+
+      return (
+        <div className="space-y-5">
+          {selectedTemplate ? (
+            <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+              <p className="text-sm font-medium text-slate-500">
+                Форма {selectedTemplate.form_code || 'Без кода'}
+              </p>
+              <h4 className="mt-2 text-xl font-semibold text-slate-950">
+                {selectedTemplate.title_ru || selectedTemplate.title || 'Налоговая форма'}
+              </h4>
+            </div>
+          ) : null}
+
+          {templateWarning ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-5 py-4 text-sm text-amber-700">
+              {templateWarning}
+            </div>
+          ) : null}
+
+          {selectedTemplate && templateFields.length > 0 ? (
+            <div className="grid gap-5 md:grid-cols-2">
+              {templateFields.map(field => renderDynamicField(field))}
+            </div>
+          ) : null}
+        </div>
+      )
+    }
+
     return (
-      <div className="rounded-[32px] border border-white/70 bg-white/90 px-6 py-12 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
-          Разделы формы не найдены.
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <SummaryRow label="Тип бизнеса" value={formData.businessType || 'Не выбран'} />
+          <SummaryRow label="Налоговый режим" value={formData.taxRegimeName || 'Не выбран'} />
+          <SummaryRow label="Период" value={reportingPeriod} />
+          <SummaryRow
+            label="Форма"
+            value={
+              selectedTemplate
+                ? `${selectedTemplate.form_code || 'Без кода'}`
+                : 'Не найдена'
+            }
+          />
+        </div>
+
+        {selectedTemplate ? (
+          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+            <p className="text-sm text-slate-500">Название формы</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">
+              {selectedTemplate.title_ru || selectedTemplate.title || 'Налоговая форма'}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="space-y-3">
+          {templateFields.length > 0 ? (
+            templateFields.map(field => {
+              const rawValue = formData.dynamicFieldValues[field.code]
+              const displayValue =
+                typeof rawValue === 'boolean'
+                  ? rawValue
+                    ? 'Да'
+                    : 'Нет'
+                  : rawValue === '' || rawValue === undefined || rawValue === null
+                    ? 'Не заполнено'
+                    : String(rawValue)
+
+              return (
+                <SummaryRow
+                  key={field.id || field.code}
+                  label={getFieldLabel(field)}
+                  value={displayValue}
+                />
+              )
+            })
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+              Для выбранной формы пока нет введённых данных.
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+            <p className="text-sm text-slate-500">Статус проверки</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">
+              Готово к предварительной валидации
+            </p>
+          </div>
+          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+            <p className="text-sm text-slate-500">Итоговое значение</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">
+              {numericSummary.toLocaleString('ru-RU')} ₸
+            </p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[32px] border border-white/70 bg-slate-950 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.12)]">
-        <p className="text-sm font-medium text-sky-300">
-          Форма {currentStep + 1} из {sectionSteps.length}
-        </p>
-        <h2 className="mt-3 text-3xl font-semibold">
-          Мастер налоговой формы 910.00
-        </h2>
+    <div className="mx-auto w-full max-w-4xl space-y-6">
+      <section className="rounded-[32px] border border-white/70 bg-[linear-gradient(135deg,#ffffff_0%,#f5f9ff_58%,#ebf4ff_100%)] p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] md:p-8">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
+            МАСТЕР НАЛОГОВОЙ ФОРМЫ
+          </p>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 md:text-[2rem]">
+            Создание и заполнение налоговой формы
+          </h2>
+          <p className="mt-3 text-sm leading-7 text-slate-600 md:text-base">
+            Пройдите шаги последовательно, чтобы собрать данные для налоговой формы
+            и получить итоговый расчёт.
+          </p>
+        </div>
       </section>
 
-      {errorMessage && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      {errorMessage ? (
+        <div className="rounded-[24px] border border-rose-200 bg-rose-50/90 px-5 py-4 text-sm text-rose-700 shadow-[0_8px_24px_rgba(244,63,94,0.08)]">
           {errorMessage}
         </div>
-      )}
+      ) : null}
 
-      {successMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+      {successMessage ? (
+        <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/90 px-5 py-4 text-sm text-emerald-700 shadow-[0_8px_24px_rgba(16,185,129,0.08)]">
           {successMessage}
         </div>
-      )}
+      ) : null}
 
-      <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-        <div
-          className="h-full rounded-full bg-slate-950 transition-all"
-          style={{
-            width: `${((currentStep + 1) / sectionSteps.length) * 100}%`,
-          }}
-        />
-      </div>
+      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] md:p-7">
+        <Stepper currentStep={step} />
+      </section>
 
-      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-        <div className="mb-8">
-          <h3 className="text-xl font-semibold text-slate-950">
-            {currentSection.title}
-          </h3>
-        </div>
+      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] md:p-7">
+        <div className="space-y-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Шаг {step} из {steps.length}
+            </p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-950">
+              {steps[step - 1].label}
+            </h3>
+          </div>
 
-        <div className="space-y-5">
-          {currentSection.fields.map(field => (
-            <div key={field.id}>
-              <label
-                className="mb-2 block text-sm font-medium text-slate-800"
-                htmlFor={field.code}
-              >
-                {getFieldLabel(field)}
-              </label>
+          {renderStepContent()}
 
-              {field.data_type === 'boolean' ? (
-                <label className="flex items-center gap-3 rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-700">
-                  <input
-                    id={field.code}
-                    type="checkbox"
-                    checked={Boolean(values[field.code])}
-                    onChange={event =>
-                      handleChange(field, event.target.checked)
-                    }
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  <span>{getFieldPlaceholder(field) || 'Да / Нет'}</span>
-                </label>
-              ) : (
-                <input
-                  id={field.code}
-                  type={
-                    field.data_type === 'number'
-                      ? 'number'
-                      : field.data_type === 'date'
-                        ? 'date'
-                        : 'text'
-                  }
-                  value={values[field.code] ?? ''}
-                  onChange={event => handleChange(field, event.target.value)}
-                  placeholder={getFieldPlaceholder(field)}
-                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500"
-                />
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 flex items-center justify-between gap-3 border-t border-slate-100 pt-6">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
-              onClick={goBack}
-              disabled={isFirstStep}
-              className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={handleBack}
+              disabled={step === 1}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Назад
             </button>
 
-            <button
-              type="button"
-              onClick={handleSaveDraft}
-              disabled={isSavingDraft}
-              className="rounded-2xl border border-slate-900 px-4 py-2.5 text-sm font-medium text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSavingDraft ? 'Сохранение...' : 'Сохранить черновик'}
-            </button>
+            {step === steps.length ? (
+              <button
+                type="button"
+                onClick={handleFinish}
+                className="rounded-2xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
+              >
+                Завершить
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleNext}
+                className="rounded-2xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
+              >
+                Далее
+              </button>
+            )}
           </div>
-
-          <button
-            type="button"
-            onClick={goNext}
-            disabled={isLastStep}
-            className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isLastStep ? 'Последний раздел' : 'Далее'}
-          </button>
         </div>
       </section>
     </div>

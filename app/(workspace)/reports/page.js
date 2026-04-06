@@ -2,12 +2,23 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import ContentCard from '@/components/content-card'
+import FilterBar from '@/components/filter-bar'
 import { supabase } from '@/lib/supabase'
 
 const statusLabels = {
   draft: 'Черновик',
   submitted: 'Отправлен',
 }
+
+const filters = [
+  'Наименование документа',
+  'Номер',
+  'Дата',
+  'Контрагент',
+  'Сотрудник',
+  'Статус',
+]
 
 function formatDate(value) {
   if (!value) {
@@ -61,7 +72,7 @@ export default function ReportsPage() {
 
       if (error) {
         console.error(error)
-        setErrorMessage(error.message || 'Не удалось загрузить отчёты.')
+        setErrorMessage(error.message || 'Не удалось загрузить документы.')
         setReports([])
         setLoading(false)
         return
@@ -75,7 +86,7 @@ export default function ReportsPage() {
   }, [])
 
   async function handleDelete(reportId) {
-    const shouldDelete = window.confirm('Удалить этот отчёт?')
+    const shouldDelete = window.confirm('Удалить этот документ?')
 
     if (!shouldDelete) {
       return
@@ -88,7 +99,7 @@ export default function ReportsPage() {
 
     if (error) {
       console.error(error)
-      setErrorMessage(error.message || 'Не удалось удалить отчёт.')
+      setErrorMessage(error.message || 'Не удалось удалить документ.')
       setDeletingId(null)
       return
     }
@@ -98,73 +109,77 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-950">
-            История отчётов
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Все сохранённые и отправленные отчёты.
-          </p>
+    <div className="space-y-5">
+      <ContentCard className="p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-[30px] font-semibold tracking-tight text-[#214f79]">
+              Исходящие документы
+            </h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Просмотр и управление исходящими электронными документами.
+            </p>
+          </div>
+
+          <Link
+            href="/form"
+            className="inline-flex h-11 items-center justify-center rounded-2xl bg-[#0f6cab] px-5 text-sm font-semibold text-white transition hover:bg-[#0d5f98]"
+          >
+            Добавить документ
+          </Link>
         </div>
+      </ContentCard>
 
-        <Link
-          href="/form"
-          className="inline-flex rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-        >
-          Новый отчёт
-        </Link>
-      </div>
+      <FilterBar filters={filters} />
 
-      {errorMessage && (
-        <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      {errorMessage ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {errorMessage}
         </div>
-      )}
+      ) : null}
 
-      <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200">
+      <ContentCard className="overflow-hidden">
         {loading ? (
-          <div className="bg-slate-50 px-5 py-10 text-sm text-slate-500">
-            Загрузка отчётов...
+          <div className="px-6 py-16 text-sm text-slate-500">
+            Загрузка документов...
           </div>
         ) : reports.length === 0 ? (
-          <div className="bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-            Пока нет отчётов
+          <div className="flex min-h-[360px] items-start justify-center px-6 py-14 text-sm text-slate-400">
+            Здесь пока нет исходящих документов
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-slate-500">
+              <thead className="bg-[#f4f8fb] text-left text-slate-500">
                 <tr>
-                  <th className="px-5 py-4 font-medium">Код формы</th>
-                  <th className="px-5 py-4 font-medium">Название</th>
-                  <th className="px-5 py-4 font-medium">Дата создания</th>
-                  <th className="px-5 py-4 font-medium">Статус</th>
-                  <th className="px-5 py-4 font-medium">Действия</th>
+                  <th className="px-6 py-4 font-medium">Номер</th>
+                  <th className="px-6 py-4 font-medium">Наименование документа</th>
+                  <th className="px-6 py-4 font-medium">Дата</th>
+                  <th className="px-6 py-4 font-medium">Статус</th>
+                  <th className="px-6 py-4 font-medium">Действия</th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-200 bg-white">
                 {reports.map(report => (
                   <tr key={report.id} className="text-slate-700">
-                    <td className="px-5 py-4 font-medium text-slate-950">
-                      {report.report_templates?.form_code || 'Без кода'}
+                    <td className="px-6 py-4 font-medium text-slate-950">
+                      {report.report_templates?.form_code || `DOC-${report.id}`}
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-6 py-4">
                       {report.report_templates?.title_ru || 'Без названия'}
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-6 py-4">
                       {formatDate(report.created_at)}
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-6 py-4">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(report.status)}`}
                       >
                         {getStatusLabel(report.status)}
                       </span>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-2">
                         <Link
                           href="/form"
@@ -189,7 +204,7 @@ export default function ReportsPage() {
             </table>
           </div>
         )}
-      </div>
+      </ContentCard>
     </div>
   )
 }

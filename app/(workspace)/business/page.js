@@ -132,35 +132,41 @@ export default function BusinessPage() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[0.7fr_1.3fr]">
-      <section className="rounded-[32px] border border-white/70 bg-slate-950 p-6 text-white shadow-[0_18px_60px_rgba(15,23,42,0.12)]">
-        <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-          Профиль бизнеса
-        </p>
-        <h2 className="mt-4 text-3xl font-semibold">
-          Просмотр и редактирование данных налогоплательщика
-        </h2>
+    <div className="space-y-6">
+      <section className="rounded-[32px] border border-white/70 bg-[linear-gradient(135deg,#ffffff_0%,#f5f9ff_58%,#ebf4ff_100%)] p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] md:p-8">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
+            ПРОФИЛЬ БИЗНЕСА
+          </p>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 md:text-[2rem]">
+            Данные компании и налогоплательщика
+          </h2>
+          <p className="mt-3 text-sm leading-7 text-slate-600 md:text-base">
+            Проверьте и обновите реквизиты компании перед заполнением налоговых
+            форм и отчетности.
+          </p>
+        </div>
       </section>
 
-      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+      <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] md:p-7">
         {errorMessage && (
-          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-5 rounded-[24px] border border-rose-200 bg-rose-50/90 px-5 py-4 text-sm text-rose-700 shadow-[0_8px_24px_rgba(244,63,94,0.08)]">
             {errorMessage}
           </div>
         )}
 
         {successMessage && (
-          <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="mb-5 rounded-[24px] border border-emerald-200 bg-emerald-50/90 px-5 py-4 text-sm text-emerald-700 shadow-[0_8px_24px_rgba(16,185,129,0.08)]">
             {successMessage}
           </div>
         )}
 
         {loading ? (
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-10 text-sm text-slate-500">
+          <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-10 text-sm text-slate-500">
             Загрузка профиля бизнеса...
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-5">
+          <form onSubmit={handleSave} className="space-y-6">
             <div className="grid gap-5 md:grid-cols-2">
               {editableKeys.map(key => {
                 const value = formState[key]
@@ -168,17 +174,21 @@ export default function BusinessPage() {
                 const isNumber = typeof value === 'number'
 
                 return (
-                  <div key={key} className={key === 'address' ? 'md:col-span-2' : ''}>
-                    <label className="mb-2 block text-sm font-medium text-slate-800">
+                  <div
+                    key={key}
+                    className={`space-y-2.5 ${key === 'address' ? 'md:col-span-2' : ''}`}
+                  >
+                    <label className="block text-sm font-medium text-slate-800">
                       {makeLabel(key)}
                     </label>
 
                     {isBoolean ? (
-                      <label className="flex items-center gap-3 rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-700">
+                      <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-700 transition hover:border-slate-300">
                         <input
                           type="checkbox"
                           checked={Boolean(value)}
                           onChange={event => handleChange(key, event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                         />
                         <span>{value ? 'Включено' : 'Выключено'}</span>
                       </label>
@@ -187,9 +197,12 @@ export default function BusinessPage() {
                         type={isNumber ? 'number' : 'text'}
                         value={value ?? ''}
                         onChange={event =>
-                          handleChange(key, isNumber ? Number(event.target.value) : event.target.value)
+                          handleChange(
+                            key,
+                            isNumber ? Number(event.target.value) : event.target.value
+                          )
                         }
-                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:bg-white"
                       />
                     )}
                   </div>
@@ -197,13 +210,13 @@ export default function BusinessPage() {
               })}
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end border-t border-slate-100 pt-6">
               <button
                 type="submit"
                 disabled={isSaving}
                 className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSaving ? 'Сохранение...' : 'Сохранить данные бизнеса'}
+                {isSaving ? 'Сохранение...' : 'Сохранить данные'}
               </button>
             </div>
           </form>
