@@ -45,9 +45,7 @@ export default function LoginPage() {
             <Link href="/" className="text-sm font-medium text-sky-700 hover:text-sky-800">
               Назад на главную
             </Link>
-            <h2 className="mt-4 text-3xl font-semibold text-slate-950">
-              Вход
-            </h2>
+            <h2 className="mt-4 text-3xl font-semibold text-slate-950">Вход</h2>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -93,7 +91,6 @@ export default function LoginPage() {
               Войти
             </button>
           </form>
-
         </div>
       </div>
     </div>

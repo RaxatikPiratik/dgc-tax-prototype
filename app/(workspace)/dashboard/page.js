@@ -74,8 +74,7 @@ export default function DashboardPage() {
         id: template.id,
         code: template.form_code || 'Форма отчетности',
         description:
-          template.title_ru ||
-          'Налоговая отчетность для соответствующего режима',
+          template.title_ru || 'Налоговая отчетность для соответствующего режима',
       }))
     }
 
@@ -131,8 +130,7 @@ export default function DashboardPage() {
                 Последние отчеты
               </h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Здесь будут появляться последние сохраненные и отправленные
-                формы.
+                Здесь будут появляться последние сохраненные и отправленные формы.
               </p>
             </div>
             <Link
@@ -183,14 +181,13 @@ export default function DashboardPage() {
             Данные компании
           </h3>
           <p className="mt-3 max-w-lg text-sm leading-6 text-slate-500">
-            Проверьте и обновите реквизиты компании перед заполнением
-            отчетности.
+            Проверьте и обновите реквизиты компании перед заполнением отчетности.
           </p>
 
           <div className="mt-8 rounded-[24px] border border-slate-200 bg-[linear-gradient(135deg,#f8fbff_0%,#eef6ff_100%)] p-5">
             <p className="text-sm font-medium text-slate-600">
-              Актуальные реквизиты помогают избежать ошибок при заполнении форм
-              и ускоряют создание нового отчета.
+              Актуальные реквизиты помогают избежать ошибок при заполнении форм и
+              ускоряют создание нового отчета.
             </p>
             <Link
               href="/business"

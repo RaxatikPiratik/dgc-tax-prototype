@@ -41,7 +41,7 @@ const pageMeta = {
   '/form': { title: 'Мастер налоговой формы', searchValue: 'Форма 910.00' },
   '/salary-calculator': {
     title: 'Калькулятор ЗП',
-    searchValue: 'Прямой расчёт',
+    searchValue: 'Прямой расчет',
   },
 }
 

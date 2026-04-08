@@ -36,6 +36,36 @@ function isEditableValue(value) {
   return ['string', 'number', 'boolean'].includes(typeof value) || value === null
 }
 
+function getErrorMessage(error, fallbackMessage) {
+  if (!error) {
+    return fallbackMessage
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (typeof error === 'object') {
+    if (typeof error.message === 'string' && error.message.trim()) {
+      return error.message
+    }
+
+    if (typeof error.details === 'string' && error.details.trim()) {
+      return error.details
+    }
+
+    if (typeof error.hint === 'string' && error.hint.trim()) {
+      return error.hint
+    }
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error
+  }
+
+  return fallbackMessage
+}
+
 export default function BusinessPage() {
   const [businessRecord, setBusinessRecord] = useState(null)
   const [formState, setFormState] = useState(fallbackProfile)
@@ -49,27 +79,32 @@ export default function BusinessPage() {
       setLoading(true)
       setErrorMessage('')
 
-      const { data, error } = await supabase
-        .from('businesses')
-        .select('*')
-        .order('id', { ascending: true })
-        .limit(1)
+      try {
+        const { data, error } = await supabase
+          .from('businesses')
+          .select('*')
+          .order('id', { ascending: true })
+          .limit(1)
+          .maybeSingle()
 
-      if (error) {
-        console.error(error)
-        setErrorMessage('Не удалось загрузить профиль бизнеса.')
+        if (error) {
+          setErrorMessage(
+            getErrorMessage(error, 'Не удалось загрузить профиль бизнеса.')
+          )
+          return
+        }
+
+        if (data) {
+          setBusinessRecord(data)
+          setFormState(data)
+        }
+      } catch (error) {
+        setErrorMessage(
+          getErrorMessage(error, 'Не удалось загрузить профиль бизнеса.')
+        )
+      } finally {
         setLoading(false)
-        return
       }
-
-      const firstBusiness = data?.[0] || null
-
-      if (firstBusiness) {
-        setBusinessRecord(firstBusiness)
-        setFormState(firstBusiness)
-      }
-
-      setLoading(false)
     }
 
     loadBusiness()
@@ -117,8 +152,9 @@ export default function BusinessPage() {
       .eq('id', businessRecord.id)
 
     if (error) {
-      console.error(error)
-      setErrorMessage('Не удалось обновить профиль бизнеса.')
+      setErrorMessage(
+        getErrorMessage(error, 'Не удалось обновить профиль бизнеса.')
+      )
       setIsSaving(false)
       return
     }

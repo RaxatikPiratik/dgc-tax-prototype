@@ -71,7 +71,6 @@ export default function ReportsPage() {
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error(error)
         setErrorMessage(error.message || 'Не удалось загрузить документы.')
         setReports([])
         setLoading(false)
@@ -98,7 +97,6 @@ export default function ReportsPage() {
     const { error } = await supabase.from('submissions').delete().eq('id', reportId)
 
     if (error) {
-      console.error(error)
       setErrorMessage(error.message || 'Не удалось удалить документ.')
       setDeletingId(null)
       return
@@ -169,9 +167,7 @@ export default function ReportsPage() {
                     <td className="px-6 py-4">
                       {report.report_templates?.title_ru || 'Без названия'}
                     </td>
-                    <td className="px-6 py-4">
-                      {formatDate(report.created_at)}
-                    </td>
+                    <td className="px-6 py-4">{formatDate(report.created_at)}</td>
                     <td className="px-6 py-4">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(report.status)}`}

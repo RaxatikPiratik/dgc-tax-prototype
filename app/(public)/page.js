@@ -33,7 +33,8 @@ export default function LandingPage() {
         <section className="flex flex-1 items-center py-12">
           <div>
             <h1 className="mt-6 max-w-3xl text-5xl font-semibold leading-tight tracking-tight text-slate-950">
-              Отправляйте налоговую отчетность через пошаговый цифровой процесс вместо ручной бумажной работы.
+              Отправляйте налоговую отчетность через пошаговый цифровой процесс вместо
+              ручной бумажной работы.
             </h1>
 
             <div className="mt-8 flex flex-wrap gap-3">

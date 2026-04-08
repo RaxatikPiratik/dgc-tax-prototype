@@ -103,15 +103,39 @@ function normalizePeriodType(value) {
   return normalized
 }
 
+function getSupabaseErrorMessage(error, fallbackMessage) {
+  if (!error) {
+    return fallbackMessage
+  }
+
+  if (typeof error.message === 'string' && error.message.trim()) {
+    if (error.message.includes('Failed to fetch')) {
+      return 'Не удалось подключиться к Supabase. Проверьте интернет, URL проекта и настройки доступа.'
+    }
+
+    return error.message
+  }
+
+  if (typeof error.details === 'string' && error.details.trim()) {
+    return error.details
+  }
+
+  if (typeof error.hint === 'string' && error.hint.trim()) {
+    return error.hint
+  }
+
+  return fallbackMessage
+}
+
 function logSupabaseError(label, error, response) {
-  console.error(`${label} raw error object:`, error)
-  console.error(`${label} JSON.stringify(error, null, 2):`, JSON.stringify(error, null, 2))
-  console.error(`${label} error.message:`, error?.message)
-  console.error(`${label} error.details:`, error?.details)
-  console.error(`${label} error.hint:`, error?.hint)
-  console.error(`${label} error.code:`, error?.code)
-  console.error(`${label} error.status:`, error?.status)
-  console.error(`${label} full Supabase response:`, response)
+  return {
+    label,
+    message: getSupabaseErrorMessage(error, 'Supabase request failed.'),
+    details: typeof error?.details === 'string' ? error.details : '',
+    hint: typeof error?.hint === 'string' ? error.hint : '',
+    code: typeof error?.code === 'string' ? error.code : '',
+    hasResponse: Boolean(response),
+  }
 }
 
 function isTemplateBusinessTypeMatch(templateBusinessType, selectedBusinessType) {
@@ -146,6 +170,135 @@ function getDefaultFieldValue(field) {
   }
 
   return ''
+}
+
+const FORM_910_FIELD_ORDER = [
+  'tax_year',
+  'tax_quarter',
+  'taxpayer_name',
+  'taxpayer_identifier',
+  'income_total',
+  'calculated_tax',
+  'confirm_accuracy',
+]
+
+const FORM_910_SECTION_ORDER = [
+  {
+    key: 'base',
+    title: 'Основные данные',
+    codes: ['tax_year', 'tax_quarter', 'taxpayer_name', 'taxpayer_identifier'],
+  },
+  {
+    key: 'income',
+    title: 'Доход',
+    codes: ['income_total'],
+  },
+  {
+    key: 'calculation',
+    title: 'Расчет',
+    codes: ['calculated_tax', 'confirm_accuracy'],
+  },
+]
+
+function isForm910(template) {
+  return template?.form_code === '910.00'
+}
+
+function parseNumberValue(value) {
+  if (value === '' || value === null || value === undefined) {
+    return null
+  }
+
+  const normalized = String(value).replace(',', '.').trim()
+
+  if (!normalized) {
+    return null
+  }
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function calculateSimplifiedTax(incomeTotal) {
+  const parsedIncome = parseNumberValue(incomeTotal)
+
+  if (parsedIncome === null) {
+    return ''
+  }
+
+  return (parsedIncome * 0.03).toFixed(2)
+}
+
+function getVisibleTemplateFields(template, fields) {
+  if (!isForm910(template)) {
+    return fields
+  }
+
+  const allowedCodes = new Set(FORM_910_FIELD_ORDER)
+  const fieldMap = new Map()
+
+  fields.forEach(field => {
+    if (!allowedCodes.has(field.code) || fieldMap.has(field.code)) {
+      return
+    }
+
+    fieldMap.set(field.code, field)
+  })
+
+  return FORM_910_FIELD_ORDER.map((code, index) => {
+    const field = fieldMap.get(code)
+
+    if (!field) {
+      return null
+    }
+
+    const section = FORM_910_SECTION_ORDER.find(item => item.codes.includes(code))
+
+    return {
+      ...field,
+      sort_order: index + 1,
+      section_key: section?.key || field.section_key || '',
+      section_title: section?.title || field.section_title || '',
+      section_sort_order:
+        (section ? FORM_910_SECTION_ORDER.findIndex(item => item.key === section.key) + 1 : 0) ||
+        field.section_sort_order ||
+        0,
+    }
+  }).filter(Boolean)
+}
+
+function groupTemplateFields(template, fields) {
+  if (fields.length === 0) {
+    return []
+  }
+
+  if (isForm910(template)) {
+    return FORM_910_SECTION_ORDER.map((section, index) => ({
+      key: section.key,
+      title: section.title,
+      sortOrder: index + 1,
+      fields: fields.filter(field => section.codes.includes(field.code)),
+    })).filter(section => section.fields.length > 0)
+  }
+
+  const grouped = new Map()
+
+  fields.forEach(field => {
+    const sectionKey = field.section_key || String(field.report_section_id || 'default')
+
+    if (!grouped.has(sectionKey)) {
+      grouped.set(sectionKey, {
+        key: sectionKey,
+        title: field.section_title || 'Данные формы',
+        sortOrder: field.section_sort_order || 0,
+        fields: [],
+      })
+    }
+
+    grouped.get(sectionKey).fields.push(field)
+  })
+
+  return Array.from(grouped.values()).sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
 function Stepper({ currentStep }) {
@@ -243,6 +396,7 @@ function InputField({
   error,
   placeholder = '',
   required = false,
+  readOnly = false,
 }) {
   return (
     <FieldShell label={label} error={error} required={required}>
@@ -252,7 +406,12 @@ function InputField({
         value={value}
         onChange={event => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:bg-white"
+        readOnly={readOnly}
+        className={`h-12 w-full rounded-2xl border px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 ${
+          readOnly
+            ? 'border-slate-200 bg-slate-100 text-slate-500'
+            : 'border-slate-200 bg-slate-50 focus:border-sky-500 focus:bg-white'
+        }`}
       />
     </FieldShell>
   )
@@ -319,7 +478,10 @@ export default function FormPage() {
       console.log('[loadRegimes] returned data:', data)
 
       if (error) {
-        logSupabaseError('[loadRegimes] tax_regimes error', error, { data, error })
+        const nextErrorMessage = getSupabaseErrorMessage(
+          error,
+          'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РЅР°Р»РѕРіРѕРІС‹Рµ СЂРµР¶РёРјС‹. РњРѕР¶РЅРѕ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ С„РѕСЂРјСѓ СЃ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹Рј РЅР°Р±РѕСЂРѕРј РІР°СЂРёР°РЅС‚РѕРІ.'
+        )
         setErrorMessage(prev =>
           prev || 'Не удалось загрузить налоговые режимы. Можно использовать форму с ограниченным набором вариантов.'
         )
@@ -356,71 +518,6 @@ export default function FormPage() {
     loadRegimes()
   }, [formData.businessType])
 
-  useEffect(() => {
-    async function loadTemplateAndFields() {
-      if (!formData.businessType || !formData.taxRegimeId || !formData.year || !formData.month) {
-        setSelectedTemplate(null)
-        setTemplateFields([])
-        setTemplateWarning('')
-        setFormData(prev => ({
-          ...prev,
-          dynamicFieldValues: {},
-          dynamicFieldErrors: {},
-        }))
-        return
-      }
-
-      setIsLoadingTemplate(true)
-      setTemplateWarning('')
-
-      const template = await findMatchingTemplate({
-        businessType: formData.businessType,
-        taxRegimeId: formData.taxRegimeId,
-        periodType: 'QUARTER',
-      })
-
-      if (!template) {
-        setSelectedTemplate(null)
-        setTemplateFields([])
-        setTemplateWarning('Подходящая форма не найдена для выбранных параметров.')
-        setFormData(prev => ({
-          ...prev,
-          dynamicFieldValues: {},
-          dynamicFieldErrors: {},
-        }))
-        setIsLoadingTemplate(false)
-        return
-      }
-
-      setSelectedTemplate(template)
-
-      const fields = await loadTemplateFields(template.id)
-      setTemplateFields(fields)
-
-      if (fields.length === 0) {
-        setTemplateWarning('Для выбранной формы пока не настроены поля.')
-      }
-
-      setFormData(prev => {
-        const nextValues = {}
-
-        fields.forEach(field => {
-          nextValues[field.code] =
-            prev.dynamicFieldValues[field.code] ?? getDefaultFieldValue(field)
-        })
-
-        return {
-          ...prev,
-          dynamicFieldValues: nextValues,
-          dynamicFieldErrors: {},
-        }
-      })
-
-      setIsLoadingTemplate(false)
-    }
-
-    loadTemplateAndFields()
-  }, [formData.businessType, formData.taxRegimeId, formData.year, formData.month])
 
   const reportingPeriod = useMemo(() => {
     if (!formData.month || !formData.year) {
@@ -438,8 +535,23 @@ export default function FormPage() {
     return `${formData.year}-${String(months.indexOf(formData.month) + 1).padStart(2, '0')}`
   }, [formData.month, formData.year])
 
+  const visibleTemplateFields = useMemo(
+    () => getVisibleTemplateFields(selectedTemplate, templateFields),
+    [selectedTemplate, templateFields]
+  )
+
+  const groupedTemplateFields = useMemo(
+    () => groupTemplateFields(selectedTemplate, visibleTemplateFields),
+    [selectedTemplate, visibleTemplateFields]
+  )
+
   const numericSummary = useMemo(() => {
-    return templateFields.reduce((total, field) => {
+    if (formData.dynamicFieldValues.calculated_tax) {
+      const calculatedTax = Number(formData.dynamicFieldValues.calculated_tax)
+      return Number.isFinite(calculatedTax) ? calculatedTax : 0
+    }
+
+    return visibleTemplateFields.reduce((total, field) => {
       if (field.data_type !== 'number') {
         return total
       }
@@ -447,7 +559,7 @@ export default function FormPage() {
       const value = Number(formData.dynamicFieldValues[field.code])
       return total + (Number.isFinite(value) ? value : 0)
     }, 0)
-  }, [formData.dynamicFieldValues, templateFields])
+  }, [formData.dynamicFieldValues, visibleTemplateFields])
 
   function updateFormData(key, value) {
     setSuccessMessage('')
@@ -468,13 +580,20 @@ export default function FormPage() {
       dynamicFieldValues: {
         ...prev.dynamicFieldValues,
         [field.code]: value,
+        ...(isForm910(selectedTemplate) && field.code === 'income_total'
+          ? { calculated_tax: calculateSimplifiedTax(value) }
+          : {}),
       },
       dynamicFieldErrors: {
         ...prev.dynamicFieldErrors,
         [field.code]: '',
+        ...(isForm910(selectedTemplate) && field.code === 'income_total'
+          ? { calculated_tax: '' }
+          : {}),
       },
     }))
   }
+
 
   async function findMatchingTemplate({ businessType, taxRegimeId, periodType }) {
     const normalizedTaxRegimeId = Number(taxRegimeId)
@@ -553,7 +672,7 @@ export default function FormPage() {
         fallbackResponse
       )
       setErrorMessage(prev =>
-        prev || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РґР°РЅРЅС‹Рµ С„РѕСЂРјС‹ РёР· Supabase.'
+        prev || 'Не удалось загрузить разделы формы из Supabase.'
       )
       return null
     }
@@ -570,27 +689,144 @@ export default function FormPage() {
   }
 
   async function loadTemplateFields(templateId) {
-    const { data, error } = await supabase
-      .from('report_fields')
+    const sectionsResponse = await supabase
+      .from('report_sections')
       .select('*')
       .eq('report_template_id', templateId)
-      .order('sort_order', { ascending: true })
 
-    if (error) {
-      console.error(error)
+    if (sectionsResponse.error) {
       setErrorMessage(prev =>
         prev || 'Не удалось загрузить данные формы из Supabase.'
       )
       return []
     }
 
-    return data || []
+    const sections = sectionsResponse.data || []
+
+    if (sections.length === 0) {
+      return []
+    }
+
+    const sectionOrder = new Map(
+      sections.map((section, index) => [section.id, section.sort_order ?? index + 1])
+    )
+
+    const { data, error } = await supabase
+      .from('report_fields')
+      .select('*')
+      .in(
+        'report_section_id',
+        sections.map(section => section.id)
+      )
+      .order('sort_order', { ascending: true })
+
+    if (error) {
+      setErrorMessage(prev => prev || 'Не удалось загрузить данные формы из Supabase.')
+      return []
+    }
+
+    return (data || [])
+      .sort((a, b) => {
+        const sectionDiff =
+          (sectionOrder.get(a.report_section_id) || 0) -
+          (sectionOrder.get(b.report_section_id) || 0)
+
+        if (sectionDiff !== 0) {
+          return sectionDiff
+        }
+
+        return (a.sort_order || 0) - (b.sort_order || 0)
+      })
+      .map(field => {
+        const section = sections.find(item => item.id === field.report_section_id)
+
+        return {
+          ...field,
+          section_key: String(field.report_section_id || ''),
+          section_title:
+            section?.title_ru ||
+            section?.title ||
+            section?.name_ru ||
+            section?.name ||
+            'Данные формы',
+          section_sort_order: sectionOrder.get(field.report_section_id) || 0,
+        }
+      })
   }
+  useEffect(() => {
+    async function loadTemplateAndFields() {
+      if (!formData.businessType || !formData.taxRegimeId || !formData.year || !formData.month) {
+        setSelectedTemplate(null)
+        setTemplateFields([])
+        setTemplateWarning('')
+        setFormData(prev => ({
+          ...prev,
+          dynamicFieldValues: {},
+          dynamicFieldErrors: {},
+        }))
+        return
+      }
+
+      setIsLoadingTemplate(true)
+      setTemplateWarning('')
+
+      const template = await findMatchingTemplate({
+        businessType: formData.businessType,
+        taxRegimeId: formData.taxRegimeId,
+        periodType: 'QUARTER',
+      })
+
+      if (!template) {
+        setSelectedTemplate(null)
+        setTemplateFields([])
+        setTemplateWarning('РџРѕРґС…РѕРґСЏС‰Р°СЏ С„РѕСЂРјР° РЅРµ РЅР°Р№РґРµРЅР° РґР»СЏ РІС‹Р±СЂР°РЅРЅС‹С… РїР°СЂР°РјРµС‚СЂРѕРІ.')
+        setFormData(prev => ({
+          ...prev,
+          dynamicFieldValues: {},
+          dynamicFieldErrors: {},
+        }))
+        setIsLoadingTemplate(false)
+        return
+      }
+
+      setSelectedTemplate(template)
+
+      const fields = await loadTemplateFields(template.id)
+      setTemplateFields(fields)
+
+      if (fields.length === 0) {
+        setTemplateWarning('Р”Р»СЏ РІС‹Р±СЂР°РЅРЅРѕР№ С„РѕСЂРјС‹ РїРѕРєР° РЅРµ РЅР°СЃС‚СЂРѕРµРЅС‹ РїРѕР»СЏ.')
+      }
+
+      setFormData(prev => {
+        const nextValues = {}
+
+        fields.forEach(field => {
+          nextValues[field.code] =
+            prev.dynamicFieldValues[field.code] ?? getDefaultFieldValue(field)
+        })
+        if (isForm910(template)) {
+          nextValues.calculated_tax = calculateSimplifiedTax(nextValues.income_total)
+        }
+
+
+        return {
+          ...prev,
+          dynamicFieldValues: nextValues,
+          dynamicFieldErrors: {},
+        }
+      })
+
+      setIsLoadingTemplate(false)
+    }
+
+    loadTemplateAndFields()
+  }, [formData.businessType, formData.taxRegimeId, formData.year, formData.month])
 
   function validateDynamicFields() {
     const nextErrors = {}
 
-    templateFields.forEach(field => {
+    visibleTemplateFields.forEach(field => {
       const value = formData.dynamicFieldValues[field.code]
       const stringValue = typeof value === 'string' ? value.trim() : value
 
@@ -608,9 +844,9 @@ export default function FormPage() {
       }
 
       if (field.data_type === 'number' && value !== '' && value !== null && value !== undefined) {
-        const numberValue = Number(value)
+        const numberValue = parseNumberValue(value)
 
-        if (!Number.isFinite(numberValue)) {
+        if (numberValue === null) {
           nextErrors[field.code] = 'Введите корректное числовое значение.'
         }
       }
@@ -735,6 +971,7 @@ export default function FormPage() {
         error={error}
         required={required}
         placeholder={placeholder}
+        readOnly={isForm910(selectedTemplate) && field.code === 'calculated_tax'}
       />
     )
   }
@@ -848,9 +1085,26 @@ export default function FormPage() {
             </div>
           ) : null}
 
-          {selectedTemplate && templateFields.length > 0 ? (
-            <div className="grid gap-5 md:grid-cols-2">
-              {templateFields.map(field => renderDynamicField(field))}
+          {selectedTemplate && visibleTemplateFields.length > 0 ? (
+            <div className="space-y-5">
+              {groupedTemplateFields.map(section => (
+                <div
+                  key={section.key}
+                  className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
+                >
+                  <div className="mb-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Раздел
+                    </p>
+                    <h5 className="mt-2 text-lg font-semibold text-slate-950">
+                      {section.title}
+                    </h5>
+                  </div>
+                  <div className="grid gap-5 md:grid-cols-2">
+                    {section.fields.map(field => renderDynamicField(field))}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : null}
         </div>
@@ -883,26 +1137,33 @@ export default function FormPage() {
         ) : null}
 
         <div className="space-y-3">
-          {templateFields.length > 0 ? (
-            templateFields.map(field => {
-              const rawValue = formData.dynamicFieldValues[field.code]
-              const displayValue =
-                typeof rawValue === 'boolean'
-                  ? rawValue
-                    ? 'Да'
-                    : 'Нет'
-                  : rawValue === '' || rawValue === undefined || rawValue === null
-                    ? 'Не заполнено'
-                    : String(rawValue)
+          {visibleTemplateFields.length > 0 ? (
+            groupedTemplateFields.map(section => (
+              <div key={section.key} className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  {section.title}
+                </p>
+                {section.fields.map(field => {
+                  const rawValue = formData.dynamicFieldValues[field.code]
+                  const displayValue =
+                    typeof rawValue === 'boolean'
+                      ? rawValue
+                        ? '��'
+                        : '���'
+                      : rawValue === '' || rawValue === undefined || rawValue === null
+                        ? '�� ���������'
+                        : String(rawValue)
 
-              return (
-                <SummaryRow
-                  key={field.id || field.code}
-                  label={getFieldLabel(field)}
-                  value={displayValue}
-                />
-              )
-            })
+                  return (
+                    <SummaryRow
+                      key={field.id || field.code}
+                      label={getFieldLabel(field)}
+                      value={displayValue}
+                    />
+                  )
+                })}
+              </div>
+            ))
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
               Для выбранной формы пока нет введённых данных.
