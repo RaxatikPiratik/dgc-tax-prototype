@@ -78,8 +78,8 @@ function normalizeBusinessType(value) {
 
   const normalized = String(value).trim().toUpperCase()
 
-  if (normalized === 'ИП' || normalized === 'IP') {
-    return 'IP'
+  if (normalized === 'ИП' || normalized === 'IP' || normalized === 'IE') {
+    return 'IE'
   }
 
   if (normalized === 'ТОО' || normalized === 'TOO' || normalized === 'LLP') {
@@ -426,6 +426,196 @@ function SummaryRow({ label, value }) {
   )
 }
 
+function generateForm910HTML(formData, selectedTemplate) {
+  const v = formData.dynamicFieldValues
+  const identifier = String(v.taxpayer_identifier || '').padEnd(12, ' ')
+  const name = v.taxpayer_name || ''
+  const year = v.tax_year || ''
+  const quarter = v.tax_quarter || ''
+  const income = v.income_total != null && v.income_total !== ''
+    ? Number(v.income_total).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '0,00'
+  const tax = v.calculated_tax != null && v.calculated_tax !== ''
+    ? Number(v.calculated_tax).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '0,00'
+  const businessType = formData.businessType === 'ИП' || formData.businessType === 'IE' ? 'ИП' : 'ТОО'
+  const today = new Date().toLocaleDateString('ru-RU')
+
+  const iinBoxes = Array.from({ length: 12 }, (_, i) =>
+    `<div class="iin-box">${identifier[i]?.trim() || ''}</div>`
+  ).join('')
+
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Форма 910.00</title>
+<style>
+  @page { size: A4 portrait; margin: 15mm 15mm 12mm 20mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: #000; background: #fff; }
+  .form-code { text-align: right; font-size: 8pt; margin-bottom: 2px; }
+  .title { text-align: center; font-weight: bold; font-size: 11pt; text-transform: uppercase; margin-bottom: 1px; }
+  .subtitle { text-align: center; font-size: 9pt; margin-bottom: 6px; }
+  .instructions { font-size: 7.5pt; line-height: 1.4; border: 1px solid #000; padding: 4px 6px; margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { border: 1px solid #000; padding: 3px 5px; font-size: 8.5pt; vertical-align: top; }
+  .section-header td { background: #c0c0c0; text-align: center; font-weight: bold; font-size: 9pt; padding: 4px; }
+  .row-num { width: 28px; text-align: center; font-weight: bold; vertical-align: middle; font-size: 9pt; }
+  .iin-row { display: flex; gap: 2px; margin-top: 5px; }
+  .iin-box { width: 20px; height: 20px; border: 1px solid #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 10pt; }
+  .underline { border-bottom: 1px solid #000; min-height: 18px; font-weight: bold; font-size: 10pt; padding: 1px 2px; margin-top: 4px; }
+  .code-col { width: 80px; text-align: center; font-weight: bold; font-size: 8pt; vertical-align: middle; }
+  .amount-col { width: 140px; text-align: right; font-weight: bold; font-size: 10.5pt; vertical-align: middle; }
+  .bold-val { font-weight: bold; font-size: 10.5pt; }
+  .sig-block { margin-top: 14px; border: 1px solid #000; padding: 8px 10px; }
+  .footer-note { margin-top: 8px; font-size: 7.5pt; text-align: center; color: #444; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+<div class="form-code">форма 910.00 стр. 1</div>
+<div class="title">Упрощённая декларация для субъектов малого бизнеса</div>
+<div class="subtitle">(Форма 910.00)</div>
+<div class="instructions">
+  Прочитайте Правила составления налоговой отчётности «Упрощённая декларация для субъектов малого бизнеса».<br>
+  ВНИМАНИЕ! Заполнять шариковой или перьевой ручкой, ЧЁРНЫМИ или СИНИМИ чернилами, ЗАГЛАВНЫМИ ПЕЧАТНЫМИ символами.
+</div>
+
+<table>
+  <tr class="section-header"><td colspan="2">Раздел. Общая информация о налогоплательщике (налоговом агенте)</td></tr>
+
+  <tr>
+    <td class="row-num">1</td>
+    <td>
+      <div style="font-size:8pt">ИИН (БИН)</div>
+      <div class="iin-row">${iinBoxes}</div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="row-num">2</td>
+    <td>
+      <div style="font-size:8pt">Фамилия, имя, отчество (при его наличии) или наименование налогоплательщика</div>
+      <div class="underline">${name}</div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="row-num">3</td>
+    <td>
+      <div style="font-size:8pt">Налоговый период, за который представляется налоговая отчётность:</div>
+      <div style="margin-top:5px;display:flex;gap:30px;align-items:center">
+        <span>Год:&nbsp;<span class="bold-val">${year}</span></span>
+        <span>Квартал:&nbsp;<span class="bold-val">${quarter}</span></span>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="row-num">4</td>
+    <td>
+      <div style="font-size:8pt">Отдельные категории налогоплательщика (укажите X в соответствующей ячейке):</div>
+      <div style="margin-top:4px;display:flex;gap:20px">
+        <span><strong>[&nbsp;&nbsp;]</strong>&nbsp;A — ведёт бухгалтерский учёт</span>
+        <span><strong>[&nbsp;&nbsp;]</strong>&nbsp;B — не ведёт бухгалтерский учёт</span>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="row-num">5</td>
+    <td>
+      <div style="font-size:8pt">Плательщик единого платежа (укажите X в ячейке):</div>
+      <div style="margin-top:4px"><strong>[&nbsp;&nbsp;]</strong></div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="row-num">6</td>
+    <td>
+      <div style="font-size:8pt">Вид декларации (укажите X в соответствующей ячейке):</div>
+      <div style="margin-top:4px;display:flex;gap:20px">
+        <span><strong>[X]</strong>&nbsp;первоначальная</span>
+        <span><strong>[&nbsp;&nbsp;]</strong>&nbsp;очередная</span>
+        <span><strong>[&nbsp;&nbsp;]</strong>&nbsp;дополнительная</span>
+        <span><strong>[&nbsp;&nbsp;]</strong>&nbsp;ликвидационная</span>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="row-num">9</td>
+    <td>
+      <div style="font-size:8pt">Тип налогоплательщика:</div>
+      <div style="margin-top:4px"><span class="bold-val">${businessType}</span></div>
+    </td>
+  </tr>
+
+  <tr class="section-header"><td colspan="2">Раздел 2. Исчисление налогов и обязательных платежей в бюджет</td></tr>
+
+  <tr>
+    <td class="code-col">910.00.001</td>
+    <td>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:8.5pt">Доход, учитываемый при исчислении налога</span>
+        <span class="amount-col">${income}&nbsp;₸</span>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="code-col">910.00.002</td>
+    <td>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:8.5pt">Ставка налога (%)</span>
+        <span class="amount-col">3%</span>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="code-col">910.00.003</td>
+    <td>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:8.5pt">Исчисленная сумма налога (910.00.001 × 3%)</span>
+        <span class="amount-col" style="font-size:12pt">${tax}&nbsp;₸</span>
+      </div>
+    </td>
+  </tr>
+
+  <tr class="section-header"><td colspan="2">Раздел 3. Ответственность налогоплательщика</td></tr>
+
+  <tr>
+    <td class="row-num">1</td>
+    <td style="font-size:8.5pt">
+      Я подтверждаю достоверность и полноту сведений, указанных в настоящей налоговой отчётности.
+    </td>
+  </tr>
+</table>
+
+<div class="sig-block">
+  <div style="font-size:8.5pt">Налогоплательщик (представитель):</div>
+  <div style="display:flex;justify-content:space-between;margin-top:24px;gap:40px">
+    <div>
+      <div style="border-bottom:1px solid #000;width:220px;min-height:18px"></div>
+      <div style="font-size:7.5pt;margin-top:2px">подпись</div>
+    </div>
+    <div>
+      <div style="border-bottom:1px solid #000;width:180px;min-height:18px"></div>
+      <div style="font-size:7.5pt;margin-top:2px">Ф.И.О. (при наличии)</div>
+    </div>
+    <div>
+      <div style="font-size:8.5pt">Дата:&nbsp;<strong>${today}</strong></div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-note">Форма 910.00 сформирована автоматически — DGC Tax App</div>
+</body>
+</html>`
+}
+
 export default function FormPage() {
   const currentDate = new Date()
   const currentMonthIndex = currentDate.getMonth()
@@ -480,7 +670,7 @@ export default function FormPage() {
       if (error) {
         const nextErrorMessage = getSupabaseErrorMessage(
           error,
-          'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РЅР°Р»РѕРіРѕРІС‹Рµ СЂРµР¶РёРјС‹. РњРѕР¶РЅРѕ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ С„РѕСЂРјСѓ СЃ РѕРіСЂР°РЅРёС‡РµРЅРЅС‹Рј РЅР°Р±РѕСЂРѕРј РІР°СЂРёР°РЅС‚РѕРІ.'
+          'Не удалось загрузить налоговые режимы. Можно использовать форму с ограниченным набором вариантов.'
         )
         setErrorMessage(prev =>
           prev || 'Не удалось загрузить налоговые режимы. Можно использовать форму с ограниченным набором вариантов.'
@@ -779,7 +969,7 @@ export default function FormPage() {
       if (!template) {
         setSelectedTemplate(null)
         setTemplateFields([])
-        setTemplateWarning('РџРѕРґС…РѕРґСЏС‰Р°СЏ С„РѕСЂРјР° РЅРµ РЅР°Р№РґРµРЅР° РґР»СЏ РІС‹Р±СЂР°РЅРЅС‹С… РїР°СЂР°РјРµС‚СЂРѕРІ.')
+        setTemplateWarning('Подходящая форма не найдена для выбранных параметров.')
         setFormData(prev => ({
           ...prev,
           dynamicFieldValues: {},
@@ -795,7 +985,7 @@ export default function FormPage() {
       setTemplateFields(fields)
 
       if (fields.length === 0) {
-        setTemplateWarning('Р”Р»СЏ РІС‹Р±СЂР°РЅРЅРѕР№ С„РѕСЂРјС‹ РїРѕРєР° РЅРµ РЅР°СЃС‚СЂРѕРµРЅС‹ РїРѕР»СЏ.')
+        setTemplateWarning('Для выбранной формы пока не настроены поля.')
       }
 
       setFormData(prev => {
@@ -907,10 +1097,21 @@ export default function FormPage() {
     setStep(prev => Math.max(prev - 1, 1))
   }
 
+  function handleDownloadForm() {
+    const html = generateForm910HTML(formData, selectedTemplate)
+    const printWindow = window.open('', '_blank', 'width=900,height=700')
+    if (!printWindow) {
+      setErrorMessage('Браузер заблокировал всплывающее окно. Разрешите popup для этого сайта.')
+      return
+    }
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => printWindow.print(), 400)
+  }
+
   function handleFinish() {
-    setSuccessMessage(
-      'Форма подготовлена. Следующим шагом можно подключить сохранение и отправку.'
-    )
+    handleDownloadForm()
   }
 
   function renderDynamicField(field) {
@@ -1113,17 +1314,21 @@ export default function FormPage() {
 
     return (
       <div className="space-y-4">
+        <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-semibold text-emerald-700">Форма готова к выгрузке</p>
+          <p className="mt-1 text-sm text-emerald-600">
+            Проверьте данные ниже и нажмите «Скачать форму 910.00» — откроется
+            окно печати, выберите «Сохранить как PDF».
+          </p>
+        </div>
+
         <div className="grid gap-3 md:grid-cols-2">
           <SummaryRow label="Тип бизнеса" value={formData.businessType || 'Не выбран'} />
           <SummaryRow label="Налоговый режим" value={formData.taxRegimeName || 'Не выбран'} />
           <SummaryRow label="Период" value={reportingPeriod} />
           <SummaryRow
             label="Форма"
-            value={
-              selectedTemplate
-                ? `${selectedTemplate.form_code || 'Без кода'}`
-                : 'Не найдена'
-            }
+            value={selectedTemplate ? (selectedTemplate.form_code || 'Без кода') : 'Не найдена'}
           />
         </div>
 
@@ -1131,7 +1336,7 @@ export default function FormPage() {
           <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
             <p className="text-sm text-slate-500">Название формы</p>
             <p className="mt-2 text-lg font-semibold text-slate-950">
-              {selectedTemplate.title_ru || selectedTemplate.title || 'Налоговая форма'}
+              {selectedTemplate.title_ru || 'Налоговая форма'}
             </p>
           </div>
         ) : null}
@@ -1147,11 +1352,9 @@ export default function FormPage() {
                   const rawValue = formData.dynamicFieldValues[field.code]
                   const displayValue =
                     typeof rawValue === 'boolean'
-                      ? rawValue
-                        ? '��'
-                        : '���'
+                      ? rawValue ? 'Да' : 'Нет'
                       : rawValue === '' || rawValue === undefined || rawValue === null
-                        ? '�� ���������'
+                        ? 'Не заполнено'
                         : String(rawValue)
 
                   return (
@@ -1171,20 +1374,20 @@ export default function FormPage() {
           )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-            <p className="text-sm text-slate-500">Статус проверки</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">
-              Готово к предварительной валидации
-            </p>
-          </div>
-          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-            <p className="text-sm text-slate-500">Итоговое значение</p>
-            <p className="mt-2 text-lg font-semibold text-slate-950">
-              {numericSummary.toLocaleString('ru-RU')} ₸
-            </p>
-          </div>
+        <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm text-slate-500">Итоговая сумма налога (3%)</p>
+          <p className="mt-2 text-2xl font-bold text-slate-950">
+            {numericSummary.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₸
+          </p>
         </div>
+
+        <button
+          type="button"
+          onClick={handleDownloadForm}
+          className="w-full rounded-2xl bg-sky-600 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+        >
+          Скачать форму 910.00 (PDF)
+        </button>
       </div>
     )
   }
@@ -1248,10 +1451,10 @@ export default function FormPage() {
             {step === steps.length ? (
               <button
                 type="button"
-                onClick={handleFinish}
-                className="rounded-2xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
+                onClick={handleDownloadForm}
+                className="rounded-2xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
               >
-                Завершить
+                Скачать форму 910.00
               </button>
             ) : (
               <button

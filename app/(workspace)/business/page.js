@@ -4,23 +4,31 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const fallbackProfile = {
-  company_name: 'Sunrise Trade',
-  business_type: 'IP',
-  bin: '123456789012',
-  contact_person: 'Aruzhan Sarsenova',
-  phone: '+7 777 123 45 67',
-  email: 'demo@business.kz',
-  address: 'Kyzylorda, Kazakhstan',
+  legal_name: 'Sunrise Trade',
+  trade_name: '',
+  business_type: 'IE',
+  identifier_type: 'IIN',
+  identifier: '123456789012',
+  oked_code: '',
+  kato_code: '',
+  registration_date: '',
+  legal_address: 'Кызылорда, Казахстан',
+  is_vat_registered: false,
+  has_employees: false,
 }
 
 const fieldLabels = {
-  company_name: 'Название компании',
-  business_type: 'Тип бизнеса',
-  bin: 'БИН',
-  contact_person: 'Контактное лицо',
-  phone: 'Телефон',
-  email: 'Электронная почта',
-  address: 'Адрес',
+  legal_name: 'Юридическое наименование',
+  trade_name: 'Торговое наименование',
+  business_type: 'Тип бизнеса (IE / LLP)',
+  identifier_type: 'Тип идентификатора (IIN / BIN)',
+  identifier: 'ИИН / БИН (12 цифр)',
+  oked_code: 'Код ОКЭД',
+  kato_code: 'Код КАТО',
+  registration_date: 'Дата регистрации',
+  legal_address: 'Юридический адрес',
+  is_vat_registered: 'Плательщик НДС',
+  has_employees: 'Есть сотрудники',
 }
 
 function makeLabel(key) {
@@ -212,7 +220,7 @@ export default function BusinessPage() {
                 return (
                   <div
                     key={key}
-                    className={`space-y-2.5 ${key === 'address' ? 'md:col-span-2' : ''}`}
+                    className={`space-y-2.5 ${key === 'legal_address' ? 'md:col-span-2' : ''}`}
                   >
                     <label className="block text-sm font-medium text-slate-800">
                       {makeLabel(key)}
